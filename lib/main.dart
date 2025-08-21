@@ -1,8 +1,11 @@
 import 'dart:async';
 
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+
+import 'notification.dart';
 
 Future<void> main() async {
 
@@ -40,7 +43,20 @@ class MyHomePage extends StatefulWidget {
 class _MyHomePageState extends State<MyHomePage> {
   int? lastRssi;
   StreamSubscription<List<ScanResult>>? scanSubscription;
-  String targetMac = 'C3:00:00:23:80:CE'; // 원하는 비콘 MAC 주소로 수정
+
+
+  // DB 관련
+  final DatabaseReference dbRef = FirebaseDatabase.instance.ref("test");
+  StreamSubscription<DatabaseEvent>? dbSubscription;
+
+  int? dbLevel;
+  String? dbType;
+  String targetMac = 'C3:00:00:23:80:CE';
+
+  @override
+  void initState() {
+    super.initState();
+  }
 
   int rssiToLevel(int rssi) {
     if (rssi >= -60) return 4;
@@ -66,26 +82,116 @@ class _MyHomePageState extends State<MyHomePage> {
     await FlutterBluePlus.startScan(androidScanMode: AndroidScanMode.lowLatency);
 
     scanSubscription?.cancel();
+    dbSubscription?.cancel();
 
-    scanSubscription = FlutterBluePlus.scanResults.listen((results) {
-      int? foundRssi;
+    // 연결 중인 장치 기록
+    bool isConnecting = false;
+
+    scanSubscription = FlutterBluePlus.scanResults.listen((results) async {
       for (ScanResult r in results) {
-        // print('123 ${r.device.remoteId.str}');
-        if (r.device.remoteId.str.toUpperCase() == targetMac.toUpperCase()) {
-          foundRssi = r.rssi;
-          break;
+        if (r.device.remoteId.str.toUpperCase() != targetMac.toUpperCase()) continue;
+
+        final foundRssi = r.rssi;
+        setState(() {
+          lastRssi = foundRssi;
+        });
+
+        // print("Device ID: ${r.device.remoteId}");
+        // print("Name: ${r.device.platformName}");
+        // print("RSSI: ${r.rssi}");
+        // print("Connectable: ${r.advertisementData.connectable}");
+        // print("Advertised Service ${r.advertisementData.toString()}");
+
+        // DB와 비교
+        if (dbLevel != null) {
+          final signalLevel = rssiToLevel(foundRssi);
+          if (signalLevel == dbLevel) {
+            //_showNotification(dbType);
+          }
+        }
+
+        // connectable && 연결 중이 아닐 때만 시도
+        if (r.advertisementData.connectable == true && !isConnecting) {
+          isConnecting = true;
+          try {
+            await r.device.connect(autoConnect: false);
+            print("Connected to device");
+
+            List<BluetoothService> services = await r.device.discoverServices();
+            for (BluetoothService service in services) {
+              // FFF1 커스텀 서비스 예시
+              if (service.uuid.toString().toLowerCase().contains("fff1")) {
+                for (BluetoothCharacteristic c in service.characteristics) {
+                  // 배터리 characteristic UUID 예시 0x2A19
+                  if (c.uuid.toString().toLowerCase().contains("2a19")) {
+                    List<int> value = await c.read();
+                    int batteryLevel = value.isNotEmpty ? value[0] : 0;
+                    print("Battery Level: $batteryLevel%");
+                    // 필요시 setState로 화면 갱신 가능
+                  }
+                }
+              }
+            }
+
+            await r.device.disconnect();
+            print("Disconnected from device");
+          } catch (e) {
+            print("Error connecting/reading device: $e");
+          } finally {
+            isConnecting = false;
+          }
+        }
+
+        break; // targetMac 찾았으면 루프 종료
+      }
+    });
+
+    // DB 구독
+    dbSubscription = dbRef.onValue.listen((event) {
+      final data = event.snapshot.value as Map?;
+      if (data != null) {
+        setState(() {
+          dbLevel = data["level"];
+          dbType = data["type"];
+        });
+
+        final signalLevel = lastRssi != null ? rssiToLevel(lastRssi!) : 0;
+        if (dbLevel == signalLevel) {
+          //_showNotification(dbType);
         }
       }
-      setState(() {
-        lastRssi = foundRssi;
-      });
     });
+  }
+
+
+
+  void _showNotification(String? type) {
+    switch (type) {
+      case "A":
+        NotificationService.showLocalNotification('알람 $type', '기기를 흔들어서 알람 종료');
+        _stopScan();
+        break;
+      case "B":
+        NotificationService.showLocalNotification('알람 $type', '버튼을 3초간 클릭하여 알람 종료');
+        _stopScan();
+        break;
+      default:
+    }
+  }
+
+  void _dismissNotification() {
+
+  }
+
+  void _stopScan() {
+    scanSubscription?.cancel();
+    dbSubscription?.cancel();
+    FlutterBluePlus.stopScan();
   }
 
   @override
   void dispose() {
-    scanSubscription?.cancel();
-    FlutterBluePlus.stopScan();
+    _stopScan();
     super.dispose();
   }
 
