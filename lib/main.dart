@@ -1,9 +1,15 @@
 import 'dart:async';
 
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
-void main() {
+Future<void> main() async {
+
+  WidgetsFlutterBinding.ensureInitialized();
+
+  await Firebase.initializeApp();
+
   runApp(const MyApp());
 }
 
@@ -13,11 +19,11 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Beacon RSSI Demo',
+      title: 'Beacon Test',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
       ),
-      home: const MyHomePage(title: 'Beacon Signal Strength'),
+      home: const MyHomePage(title: 'Beacon Test'),
     );
   }
 }
@@ -57,10 +63,9 @@ class _MyHomePageState extends State<MyHomePage> {
 
   // 스캔 시작
   void _startScan() async {
-    // 블루투스 및 권한 체크 생략(위에서 이미 설명)
     await FlutterBluePlus.startScan(androidScanMode: AndroidScanMode.lowLatency);
 
-    scanSubscription?.cancel(); // 기존 구독 취소
+    scanSubscription?.cancel();
 
     scanSubscription = FlutterBluePlus.scanResults.listen((results) {
       int? foundRssi;
@@ -72,7 +77,7 @@ class _MyHomePageState extends State<MyHomePage> {
         }
       }
       setState(() {
-        lastRssi = foundRssi; // 원하는 비콘 없으면 null이 되어 "신호 없음" 표시됨
+        lastRssi = foundRssi;
       });
     });
   }
@@ -118,8 +123,8 @@ class _MyHomePageState extends State<MyHomePage> {
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _startScan,
-        child: const Icon(Icons.search),
         tooltip: '비콘 탐색',
+        child: const Icon(Icons.search),
       ),
     );
   }
