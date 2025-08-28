@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:beacon_test/eddystone_decoder.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/material.dart';
@@ -43,6 +44,7 @@ class MyHomePage extends StatefulWidget {
 class _MyHomePageState extends State<MyHomePage> {
   int? lastRssi;
   StreamSubscription<List<ScanResult>>? scanSubscription;
+  final eddystoneUuid = Guid('0000feaa-0000-1000-8000-00805f9b34fb');
 
 
   // DB 관련
@@ -84,63 +86,39 @@ class _MyHomePageState extends State<MyHomePage> {
     scanSubscription?.cancel();
     dbSubscription?.cancel();
 
-    // 연결 중인 장치 기록
-    bool isConnecting = false;
-
     scanSubscription = FlutterBluePlus.scanResults.listen((results) async {
       for (ScanResult r in results) {
         if (r.device.remoteId.str.toUpperCase() != targetMac.toUpperCase()) continue;
 
         final foundRssi = r.rssi;
-        setState(() {
-          lastRssi = foundRssi;
-        });
+        // setState(() {
+        //   lastRssi = foundRssi;
+        // });
 
         // print("Device ID: ${r.device.remoteId}");
         // print("Name: ${r.device.platformName}");
         // print("RSSI: ${r.rssi}");
         // print("Connectable: ${r.advertisementData.connectable}");
         // print("Advertised Service ${r.advertisementData.toString()}");
+        //
+        // final serviceData = r.advertisementData.serviceData;
+        //
+        // // URL 디코딩
+        // String? url = EddystoneDecoder.decodeEddystoneUrl(serviceData);
+        // if (url != null) {
+        //   print('URL: $url');
+        // }
+        //
+        // // TLM 디코딩
+        // EddystoneTlm? tlm = EddystoneDecoder.decodeEddystoneTlm(serviceData);
+        // if (tlm != null) {
+        //   print('TLM: $tlm');
+        // }
+        //
+        // // 프레임 타입 확인
+        // EddystoneFrameType? frameType = EddystoneDecoder.getFrameType(serviceData);
+        // print('Frame Type: $frameType');
 
-        // DB와 비교
-        if (dbLevel != null) {
-          final signalLevel = rssiToLevel(foundRssi);
-          if (signalLevel == dbLevel) {
-            //_showNotification(dbType);
-          }
-        }
-
-        // connectable && 연결 중이 아닐 때만 시도
-        if (r.advertisementData.connectable == true && !isConnecting) {
-          isConnecting = true;
-          try {
-            await r.device.connect(autoConnect: false);
-            print("Connected to device");
-
-            List<BluetoothService> services = await r.device.discoverServices();
-            for (BluetoothService service in services) {
-              // FFF1 커스텀 서비스 예시
-              if (service.uuid.toString().toLowerCase().contains("fff1")) {
-                for (BluetoothCharacteristic c in service.characteristics) {
-                  // 배터리 characteristic UUID 예시 0x2A19
-                  if (c.uuid.toString().toLowerCase().contains("2a19")) {
-                    List<int> value = await c.read();
-                    int batteryLevel = value.isNotEmpty ? value[0] : 0;
-                    print("Battery Level: $batteryLevel%");
-                    // 필요시 setState로 화면 갱신 가능
-                  }
-                }
-              }
-            }
-
-            await r.device.disconnect();
-            print("Disconnected from device");
-          } catch (e) {
-            print("Error connecting/reading device: $e");
-          } finally {
-            isConnecting = false;
-          }
-        }
 
         break; // targetMac 찾았으면 루프 종료
       }
@@ -150,10 +128,10 @@ class _MyHomePageState extends State<MyHomePage> {
     dbSubscription = dbRef.onValue.listen((event) {
       final data = event.snapshot.value as Map?;
       if (data != null) {
-        setState(() {
-          dbLevel = data["level"];
-          dbType = data["type"];
-        });
+        // setState(() {
+        //   dbLevel = data["level"];
+        //   dbType = data["type"];
+        // });
 
         final signalLevel = lastRssi != null ? rssiToLevel(lastRssi!) : 0;
         if (dbLevel == signalLevel) {
@@ -162,7 +140,6 @@ class _MyHomePageState extends State<MyHomePage> {
       }
     });
   }
-
 
 
   void _showNotification(String? type) {
