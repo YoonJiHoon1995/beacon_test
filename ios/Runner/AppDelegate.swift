@@ -43,8 +43,6 @@ import CoreBluetooth
 
   func startAdvertising(uuid: String) {
       peripheralManager = CBPeripheralManager(delegate: self, queue: nil)
-
-      // 저장해뒀다가 peripheralManagerDidUpdateState 에서 사용
       self.pendingUUID = uuid
   }
 

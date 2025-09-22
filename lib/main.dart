@@ -152,35 +152,76 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   // 스캔 시작
-  void _startScan() async {
+  Timer? _scanTimer;
 
-    await FlutterBluePlus.startScan(androidScanMode: AndroidScanMode.lowLatency, removeIfGone: const Duration(seconds: 5), continuousUpdates: true);
+  /// 5분마다 10초 동안만 스캔
+  void startPeriodicScan() {
+    _scanTimer?.cancel();
 
+    _doScan();
+
+    _scanTimer = Timer.periodic(const Duration(minutes: 5), (_) {
+      _doScan();
+    });
+  }
+
+  void _doScan() async {
+
+    // 기존 구독 취소
     scanSubscription?.cancel();
+
+    // 스캔 시작
+    await FlutterBluePlus.startScan(
+      androidScanMode: AndroidScanMode.lowLatency,
+      removeIfGone: const Duration(seconds: 5),
+      continuousUpdates: true,
+    );
 
     scanSubscription = FlutterBluePlus.scanResults.listen((results) async {
       for (ScanResult r in results) {
         final md = r.advertisementData.manufacturerData;
-        final serviceUuids = r.advertisementData.serviceUuids;
 
         if (md.containsKey(0x1377)) {
           final data = md[0x1377];
           final expectedData = "b2tech".codeUnits;
 
           if (data != null && listEquals(data, expectedData) && r.rssi >= -80) {
-            final serviceUuids = r.advertisementData.serviceUuids;
+            final uuid = r.advertisementData.serviceUuids;
+
+
+            scanSubscription?.cancel();
+            await FlutterBluePlus.stopScan();
 
             print(
                 "🎯 Found target beacon: $data "
                     "// RSSI: ${r.rssi} dBm "
-                    "// uuid: ${serviceUuids.isNotEmpty ? serviceUuids.first : 'N/A'}"
+                    "// uuid: ${uuid.isNotEmpty ? uuid.first : 'N/A'}"
             );
 
-            scanSubscription?.cancel();
+
           }
         }
       }
     });
+
+    // 10초 뒤에 자동으로 스캔 종료
+    Future.delayed(const Duration(seconds: 10), () async {
+      await FlutterBluePlus.stopScan();
+      await scanSubscription?.cancel();
+      print("🛑 스캔 종료");
+    });
+  }
+
+  /// 종료 시 호출
+  void stopPeriodicScan() {
+    _scanTimer?.cancel();
+    _scanTimer = null;
+    scanSubscription?.cancel();
+    FlutterBluePlus.stopScan();
+  }
+
+  void _stopScan() {
+    scanSubscription?.cancel();
   }
 
   bool listEquals(List<int> a, List<int> b) {
