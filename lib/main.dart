@@ -1,12 +1,17 @@
 import 'dart:async';
+import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:beacon_test/eddystone_decoder.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_ble_peripheral/flutter_ble_peripheral.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import 'notification.dart';
+import 'package:flutter/services.dart';
 
 Future<void> main() async {
 
@@ -15,6 +20,72 @@ Future<void> main() async {
   await Firebase.initializeApp();
 
   runApp(const MyApp());
+}
+
+
+
+class BleAdvertiser {
+  static const MethodChannel _channelAos = MethodChannel('ble_advertiser_aos');
+  static const MethodChannel _channelIos = MethodChannel('ble_advertiser_ios');
+
+  static Future<bool> _checkPermissions() async {
+    if (Platform.isAndroid) {
+      final statuses = await [
+        Permission.bluetoothAdvertise,
+        Permission.bluetoothScan,
+        Permission.bluetoothConnect,
+        Permission.locationWhenInUse,
+      ].request();
+
+      return statuses.values.every((status) => status.isGranted);
+    } else if (Platform.isIOS) {
+      // iOS는 앱 실행 시 자동 프롬프트가 뜨므로 Bluetooth 권한만 확인
+      final status = await Permission.bluetooth.request();
+      return status.isGranted;
+    }
+    return false;
+  }
+
+  /// 플랫폼에 맞게 Advertising 시작
+  static Future<void> startAdvertising(String uuid) async {
+    final hasPermission = await _checkPermissions();
+    if (!hasPermission) {
+      debugPrint("❌ Bluetooth permission not granted");
+      return;
+    }
+
+
+    try {
+      if (Platform.isAndroid) {
+        await _channelAos.invokeMethod('startAdvertising', {'uuid': uuid});
+        debugPrint("✅ Android Advertising started with $uuid");
+      } else if (Platform.isIOS) {
+        await _channelIos.invokeMethod('startAdvertising', {'uuid': uuid});
+        debugPrint("✅ iOS Advertising started with $uuid");
+      } else {
+        debugPrint("⚠️ Unsupported platform: cannot start advertising");
+      }
+    } on PlatformException catch (e) {
+      debugPrint("❌ Failed to start advertising: ${e.message}");
+    }
+  }
+
+  /// 플랫폼에 맞게 Advertising 중지
+  static Future<void> stopAdvertising() async {
+    try {
+      if (Platform.isAndroid) {
+        await _channelAos.invokeMethod('stopAdvertising');
+        debugPrint("🛑 Android Advertising stopped");
+      } else if (Platform.isIOS) {
+        await _channelIos.invokeMethod('stopAdvertising');
+        debugPrint("🛑 iOS Advertising stopped");
+      } else {
+        debugPrint("⚠️ Unsupported platform: cannot stop advertising");
+      }
+    } on PlatformException catch (e) {
+      debugPrint("❌ Failed to stop advertising: ${e.message}");
+    }
+  }
 }
 
 class MyApp extends StatelessWidget {
@@ -45,6 +116,7 @@ class _MyHomePageState extends State<MyHomePage> {
   int? lastRssi;
   StreamSubscription<List<ScanResult>>? scanSubscription;
   final eddystoneUuid = Guid('0000feaa-0000-1000-8000-00805f9b34fb');
+  final FlutterBlePeripheral blePeripheral = FlutterBlePeripheral();
 
 
   // DB 관련
@@ -81,65 +153,44 @@ class _MyHomePageState extends State<MyHomePage> {
 
   // 스캔 시작
   void _startScan() async {
-    await FlutterBluePlus.startScan(androidScanMode: AndroidScanMode.lowLatency);
+
+    await FlutterBluePlus.startScan(androidScanMode: AndroidScanMode.lowLatency, removeIfGone: const Duration(seconds: 5), continuousUpdates: true);
 
     scanSubscription?.cancel();
-    dbSubscription?.cancel();
 
     scanSubscription = FlutterBluePlus.scanResults.listen((results) async {
       for (ScanResult r in results) {
-        if (r.device.remoteId.str.toUpperCase() != targetMac.toUpperCase()) continue;
+        final md = r.advertisementData.manufacturerData;
+        final serviceUuids = r.advertisementData.serviceUuids;
 
-        final foundRssi = r.rssi;
-        // setState(() {
-        //   lastRssi = foundRssi;
-        // });
+        if (md.containsKey(0x1377)) {
+          final data = md[0x1377];
+          final expectedData = "b2tech".codeUnits;
 
-        // print("Device ID: ${r.device.remoteId}");
-        // print("Name: ${r.device.platformName}");
-        // print("RSSI: ${r.rssi}");
-        // print("Connectable: ${r.advertisementData.connectable}");
-        // print("Advertised Service ${r.advertisementData.toString()}");
-        //
-        // final serviceData = r.advertisementData.serviceData;
-        //
-        // // URL 디코딩
-        // String? url = EddystoneDecoder.decodeEddystoneUrl(serviceData);
-        // if (url != null) {
-        //   print('URL: $url');
-        // }
-        //
-        // // TLM 디코딩
-        // EddystoneTlm? tlm = EddystoneDecoder.decodeEddystoneTlm(serviceData);
-        // if (tlm != null) {
-        //   print('TLM: $tlm');
-        // }
-        //
-        // // 프레임 타입 확인
-        // EddystoneFrameType? frameType = EddystoneDecoder.getFrameType(serviceData);
-        // print('Frame Type: $frameType');
+          if (data != null && listEquals(data, expectedData) && r.rssi >= -80) {
+            final serviceUuids = r.advertisementData.serviceUuids;
 
+            print(
+                "🎯 Found target beacon: $data "
+                    "// RSSI: ${r.rssi} dBm "
+                    "// uuid: ${serviceUuids.isNotEmpty ? serviceUuids.first : 'N/A'}"
+            );
 
-        break; // targetMac 찾았으면 루프 종료
-      }
-    });
-
-    // DB 구독
-    dbSubscription = dbRef.onValue.listen((event) {
-      final data = event.snapshot.value as Map?;
-      if (data != null) {
-        // setState(() {
-        //   dbLevel = data["level"];
-        //   dbType = data["type"];
-        // });
-
-        final signalLevel = lastRssi != null ? rssiToLevel(lastRssi!) : 0;
-        if (dbLevel == signalLevel) {
-          //_showNotification(dbType);
+            scanSubscription?.cancel();
+          }
         }
       }
     });
   }
+
+  bool listEquals(List<int> a, List<int> b) {
+    if (a.length != b.length) return false;
+    for (int i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+
 
 
   void _showNotification(String? type) {
@@ -186,6 +237,14 @@ class _MyHomePageState extends State<MyHomePage> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
+            ElevatedButton(onPressed: () async {
+              await BleAdvertiser.stopAdvertising();
+              await BleAdvertiser.startAdvertising("66c6a4b0-095d-488f-8a4a-5606fa2bd4e3");
+            }, child: Text('start')),
+
+            ElevatedButton(onPressed: () async {
+              await BleAdvertiser.stopAdvertising();
+            }, child: Text('stop')),
             Text(signalIcon),
             SizedBox(height: 20),
             Text(
