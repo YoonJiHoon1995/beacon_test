@@ -120,8 +120,8 @@ class _MyHomePageState extends State<MyHomePage> {
 
 
   // DB 관련
-  final DatabaseReference dbRef = FirebaseDatabase.instance.ref("test");
-  StreamSubscription<DatabaseEvent>? dbSubscription;
+  // final DatabaseReference dbRef = FirebaseDatabase.instance.ref("test");
+  // StreamSubscription<DatabaseEvent>? dbSubscription;
 
   int? dbLevel;
   String? dbType;
@@ -155,7 +155,7 @@ class _MyHomePageState extends State<MyHomePage> {
   Timer? _scanTimer;
 
   /// 5분마다 10초 동안만 스캔
-  void startPeriodicScan() {
+  void _startPeriodicScan() {
     _scanTimer?.cancel();
 
     _doScan();
@@ -234,29 +234,29 @@ class _MyHomePageState extends State<MyHomePage> {
 
 
 
-  void _showNotification(String? type) {
-    switch (type) {
-      case "A":
-        NotificationService.showLocalNotification('알람 $type', '기기를 흔들어서 알람 종료');
-        _stopScan();
-        break;
-      case "B":
-        NotificationService.showLocalNotification('알람 $type', '버튼을 3초간 클릭하여 알람 종료');
-        _stopScan();
-        break;
-      default:
-    }
-  }
+  // void _showNotification(String? type) {
+  //   switch (type) {
+  //     case "A":
+  //       NotificationService.showLocalNotification('알람 $type', '기기를 흔들어서 알람 종료');
+  //       _stopScan();
+  //       break;
+  //     case "B":
+  //       NotificationService.showLocalNotification('알람 $type', '버튼을 3초간 클릭하여 알람 종료');
+  //       _stopScan();
+  //       break;
+  //     default:
+  //   }
+  // }
+  //
+  // void _dismissNotification() {
+  //
+  // }
 
-  void _dismissNotification() {
-
-  }
-
-  void _stopScan() {
-    scanSubscription?.cancel();
-    dbSubscription?.cancel();
-    FlutterBluePlus.stopScan();
-  }
+  // void _stopScan() {
+  //   scanSubscription?.cancel();
+  //   // dbSubscription?.cancel();
+  //   FlutterBluePlus.stopScan();
+  // }
 
   @override
   void dispose() {
@@ -305,7 +305,7 @@ class _MyHomePageState extends State<MyHomePage> {
         ),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _startScan,
+        onPressed: _startPeriodicScan,
         tooltip: '비콘 탐색',
         child: const Icon(Icons.search),
       ),

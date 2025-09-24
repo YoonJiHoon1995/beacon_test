@@ -12,10 +12,10 @@ dependencies:
     sdk: flutter
 
   flutter_blue_plus: ^1.35.5
-  flutter_local_notifications: ^19.4.0
-  firebase_core: ^4.0.0
+#  flutter_local_notifications: ^19.4.0
+#  firebase_core: ^4.0.0
   permission_handler: ^12.0.1
-  firebase_database: ^12.0.0
+#  firebase_database: ^12.0.0
   minew_beacon_plus_flutter: ^0.0.3
   flutter_ble_peripheral: ^1.2.6
 
